@@ -1,0 +1,77 @@
+version: 2
+
+project_name: kube2iam
+
+before:
+  hooks:
+    - go mod download
+    - sh -c '"${MIRROR_ROOT}/scripts/write-source-json.sh" "kube2iam_{{ .Version }}_source.json"'
+
+builds:
+  - id: kube2iam
+    main: ./cmd
+    binary: kube2iam
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/jtblin/kube2iam/version.Version={{ .Version }}
+        -X github.com/jtblin/kube2iam/version.GitCommit={{ .Env.UPSTREAM_SHORT_COMMIT }}
+        -X github.com/jtblin/kube2iam/version.BuildDate={{ .Env.BUILD_DATE }}
+
+archives:
+  - id: kube2iam
+    ids:
+      - kube2iam
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+
+signs:
+  - artifacts: checksum
+    cmd: cosign
+    signature: "${artifact}.bundle"
+    args: ["sign-blob", "--yes", "--bundle=${signature}", "${artifact}"]
+    output: true
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha512
+  extra_files:
+    - glob: "./kube2iam_{{ .Version }}_source.json"
+
+sboms:
+  - id: archive
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: podplane
+    name: kube2iam-binaries
+  draft: false
+  prerelease: auto
+  target_commitish: "{{ .Env.TARGET_COMMITISH }}"
+  name_template: "kube2iam {{ .Version }}"
+  header: |
+    Mirrored kube2iam binaries built from upstream source tag `{{ .Version }}`.
+
+    Upstream release notes: https://github.com/jtblin/kube2iam/releases/tag/{{ .Version }}
+  extra_files:
+    - glob: "./kube2iam_{{ .Version }}_source.json"
